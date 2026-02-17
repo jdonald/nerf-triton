@@ -62,7 +62,7 @@ def train(
     """Train a NeRF model.
 
     Args:
-        config: Training configuration
+        config: Training configuration (includes ``backend`` field)
         data_dir: Directory with training data
         output_dir: Directory for checkpoints
         device: torch device (auto-detected if None)
@@ -74,6 +74,8 @@ def train(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    backend = getattr(config, "backend", "pytorch")
+
     os.makedirs(output_dir, exist_ok=True)
 
     # Load data
@@ -82,7 +84,7 @@ def train(
 
     if verbose:
         print(f"Loaded {n_images} images of size {H}x{W}, focal={focal:.1f}")
-        print(f"Device: {device}")
+        print(f"Device: {device}, Backend: {backend}")
 
     # Create model
     model = NeRFModel(
@@ -91,6 +93,7 @@ def train(
         skip_layer=config.skip_layer,
         num_freq_position=config.num_freq_position,
         num_freq_direction=config.num_freq_direction,
+        backend=backend,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
@@ -129,6 +132,7 @@ def train(
                 far=config.far,
                 num_samples=config.num_samples,
                 perturb=True,
+                backend=backend,
             )
 
             # MSE loss
@@ -227,6 +231,11 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1024)
     parser.add_argument("--image_size", type=int, default=100)
     parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument(
+        "--backend",
+        choices=["pytorch", "triton", "triton-cpu", "auto"],
+        default="pytorch",
+    )
     args = parser.parse_args()
 
     config = NeRFConfig(
@@ -234,5 +243,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         image_size=args.image_size,
         learning_rate=args.lr,
+        backend=args.backend,
     )
     train(config, args.data_dir, args.output_dir)

@@ -22,13 +22,18 @@ class NeRFModel(nn.Module):
         skip_layer: int = 4,
         num_freq_position: int = 10,
         num_freq_direction: int = 4,
+        backend: str = "pytorch",
     ):
         super().__init__()
         self.skip_layer = skip_layer
 
         # Positional encodings
-        self.pos_encoder = PositionalEncoding(num_freq_position, input_dim=3)
-        self.dir_encoder = PositionalEncoding(num_freq_direction, input_dim=3)
+        self.pos_encoder = PositionalEncoding(
+            num_freq_position, input_dim=3, backend=backend
+        )
+        self.dir_encoder = PositionalEncoding(
+            num_freq_direction, input_dim=3, backend=backend
+        )
 
         pos_dim = self.pos_encoder.output_dim
         dir_dim = self.dir_encoder.output_dim

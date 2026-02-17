@@ -1,8 +1,8 @@
-"""Volume rendering for NeRF — PyTorch reference implementation.
+"""Volume rendering for NeRF — supports PyTorch and Triton backends.
 
-This module is the primary target for Triton kernel replacement. The
-volume_render function performs the alpha compositing accumulation along
-each ray, which maps well to GPU parallelism (one thread block per ray).
+This module implements the alpha compositing accumulation along each ray.
+The volume_render function dispatches to either the pure-PyTorch reference
+implementation or fused Triton kernels based on the ``backend`` parameter.
 """
 
 import torch
@@ -16,6 +16,7 @@ def volume_render(
     t_vals: torch.Tensor,
     rays_d: torch.Tensor,
     white_background: bool = True,
+    backend: str = "pytorch",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Render colors from raw NeRF output along rays.
 
@@ -29,12 +30,18 @@ def volume_render(
         t_vals: (N, S) parametric distances along rays
         rays_d: (N, 3) ray directions (used for distance computation)
         white_background: If True, composite over white background
+        backend: "pytorch", "triton", or "triton-cpu"
 
     Returns:
         rgb_map: (N, 3) rendered RGB colors per ray
         depth_map: (N,) expected depth per ray
         weights: (N, S) sample weights for hierarchical sampling
     """
+    if backend in ("triton", "triton-cpu"):
+        from nerf.triton_kernels import triton_volume_render
+        return triton_volume_render(raw, t_vals, rays_d, white_background)
+
+    # --- PyTorch reference implementation ---
     # Distances between adjacent samples
     dists = t_vals[:, 1:] - t_vals[:, :-1]  # (N, S-1)
     # Last interval extends to infinity (use large value)
@@ -83,6 +90,7 @@ def render_rays(
     num_samples: int,
     perturb: bool = True,
     white_background: bool = True,
+    backend: str = "pytorch",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Full render pipeline: sample points, query model, composite.
 
@@ -95,6 +103,7 @@ def render_rays(
         num_samples: Samples per ray
         perturb: Jitter samples during training
         white_background: Composite over white
+        backend: "pytorch", "triton", or "triton-cpu"
 
     Returns:
         rgb_map: (N, 3) rendered colors
@@ -119,7 +128,9 @@ def render_rays(
     raw = raw.reshape(N, S, 4)
 
     # Volume render
-    return volume_render(raw, t_vals, rays_d, white_background=white_background)
+    return volume_render(
+        raw, t_vals, rays_d, white_background=white_background, backend=backend
+    )
 
 
 def render_image(
@@ -133,6 +144,7 @@ def render_image(
     num_samples: int,
     chunk_size: int = 4096,
     white_background: bool = True,
+    backend: str = "pytorch",
 ) -> torch.Tensor:
     """Render a full image from a camera pose.
 
@@ -147,6 +159,7 @@ def render_image(
         num_samples: Samples per ray
         chunk_size: Number of rays to process at once
         white_background: White background flag
+        backend: "pytorch", "triton", or "triton-cpu"
 
     Returns:
         (H, W, 3) rendered image tensor in [0, 1]
@@ -168,6 +181,7 @@ def render_image(
             num_samples,
             perturb=False,
             white_background=white_background,
+            backend=backend,
         )
         all_rgb.append(rgb)
 

@@ -34,6 +34,9 @@ class NeRFConfig:
     render_image_size: int = 200
     chunk_size: int = 4096  # rays to process at once during inference
 
+    # Backend: "pytorch" (default), "triton" (GPU), "triton-cpu", or "auto"
+    backend: str = "pytorch"
+
 
 @dataclass
 class TinyNeRFConfig(NeRFConfig):
