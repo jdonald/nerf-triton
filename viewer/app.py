@@ -22,6 +22,37 @@ from viewer.camera import FPSCamera
 from viewer.recorder import PathRecorder
 
 
+def capture_rasterized_screenshot(output_path: str, image_size: int = 256) -> None:
+    """Render a single rasterized frame using the software pipeline and save it.
+
+    Uses the same triangle-rasterization / z-buffer / Lambertian-shading pipeline
+    as the OpenGL viewer, but runs entirely in software so no display is required.
+
+    Args:
+        output_path: Destination PNG file path.
+        image_size: Width and height in pixels (square).
+    """
+    from PIL import Image
+
+    from data.generate_flower import generate_flower
+    from data.render_views import render_scene
+    from nerf.rays import look_at
+
+    vertices, normals, colors, faces = generate_flower()
+
+    fov_x = 0.6911  # ~39.6 degrees — matches the viewer's default FOV
+    focal = image_size * 0.5 / np.tan(fov_x * 0.5)
+
+    cam_pos = np.array([0.0, 0.5, 3.0])
+    target = np.array([0.0, -0.2, 0.0])
+    c2w = look_at(cam_pos, target)
+
+    img = render_scene(vertices, faces, colors, normals, c2w, focal, image_size, image_size)
+    img_uint8 = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+    Image.fromarray(img_uint8).save(output_path)
+    print(f"Saved rasterized screenshot to {output_path}")
+
+
 def run_headless(num_frames: int = 60, output_path: str = None) -> list[np.ndarray]:
     """Run a simulated camera path without a display.
 
@@ -217,7 +248,19 @@ def main():
     parser.add_argument("--headless", action="store_true", help="Run without display")
     parser.add_argument("--num_frames", type=int, default=60, help="Frames for headless mode")
     parser.add_argument("--output", default="camera_path.json", help="Output path file")
+    parser.add_argument(
+        "--screenshot", default=None, metavar="PATH",
+        help="Save a single rasterized screenshot to PATH and exit (no display needed)",
+    )
+    parser.add_argument(
+        "--screenshot_size", type=int, default=256,
+        help="Screenshot resolution in pixels (square, default 256)",
+    )
     args = parser.parse_args()
+
+    if args.screenshot:
+        capture_rasterized_screenshot(args.screenshot, args.screenshot_size)
+        return
 
     if args.headless:
         poses = run_headless(args.num_frames, args.output)
